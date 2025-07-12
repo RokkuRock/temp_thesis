@@ -120,8 +120,8 @@ class ComprehensiveMetricsLogger(TrainerCallback):
         print(f"\n--- Epoch {current_epoch} 結束，開始全面評估 ---")
 
         # --- 記錄 Loss ---
-        train_loss = logs.get("loss", None) # 訓練 loss 由 trainer 的 log 提供
-        eval_loss = logs.get("eval_loss", None) # 驗證 loss 來自 trainer 的自動評估
+        train_loss = state.log_history[-2].get("loss", None) if len(state.log_history) > 1 else None
+        eval_loss = logs.get("eval_loss", None)
         with open(self.loss_log_path, "a", newline="", encoding="utf-8") as f:
             writer = csv.writer(f)
             writer.writerow([current_epoch, train_loss, eval_loss])
@@ -228,16 +228,43 @@ trainer.train()
 print("=== 模型訓練完成 ===\n")
 
 # ==============================================================================
-# 10. 儲存最終的最佳模型
+# 10. ✨ 新增：顯示最佳模型資訊並儲存 ✨
 # ==============================================================================
-print("10. 正在儲存最終的最佳模型...")
+print("10. 正在顯示最佳模型資訊並儲存...")
+
+# 從 trainer state 獲取最佳模型資訊
+best_checkpoint = trainer.state.best_model_checkpoint
+best_metric_score = trainer.state.best_metric
+
+# 根據 checkpoint 路徑找到對應的 epoch
+best_epoch = -1
+if best_checkpoint:
+    df_metrics_temp = pd.read_csv(metrics_log_path)
+    # 從路徑中提取 step 數
+    step_str = best_checkpoint.split('-')[-1]
+    if step_str.isdigit():
+        best_step = int(step_str)
+        # 找到對應的 validation log
+        best_log_entry = df_metrics_temp[
+            (df_metrics_temp['split'] == 'validation') & 
+            (np.isclose(df_metrics_temp['f1'], best_metric_score))
+        ].sort_values(by='epoch', ascending=False).iloc[0]
+        best_epoch = int(best_log_entry['epoch'])
+
+print("\n--- 最佳模型結果 ---")
+print(f"最佳模型是在 Epoch: {best_epoch} 找到的。")
+print(f"最佳模型的驗證集 F1-Score: {best_metric_score:.4f}")
+print(f"最佳模型的 Checkpoint 路徑: {best_checkpoint}")
+print("---------------------\n")
+
+
 # 因為 load_best_model_at_end=True，現在 trainer 內部持有的就是最佳模型
 trainer.save_model(output_dir)
-print(f"最佳模型已儲存至 {output_dir}")
+print(f"最佳模型 (Epoch {best_epoch}) 已儲存至 {output_dir}")
 print(f"所有指標已記錄至 {metrics_log_path}")
 print(f"所有 Loss 已記錄至 {loss_log_path}")
 
-# 清理掉訓練過程中殘留的 checkpoint 資料夾 (如果有的話)
+# 清理掉訓練過程中殘留的 checkpoint 資料夾
 for item in os.listdir(output_dir):
     if item.startswith("checkpoint-"):
         shutil.rmtree(os.path.join(output_dir, item))
