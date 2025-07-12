@@ -185,7 +185,7 @@ def main():
         per_device_train_batch_size=8,
         per_device_eval_batch_size=8,
         weight_decay=0.01,
-        evaluation_strategy='epoch',
+        eval_strategy='epoch',
         logging_strategy='epoch',
         save_strategy='epoch',
         load_best_model_at_end=True,
